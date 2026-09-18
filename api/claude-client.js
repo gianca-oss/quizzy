@@ -217,8 +217,9 @@ async function extractQuestions(apiKey, imageContent, prompt, modelKey = 'sonnet
         // sono le ultime domande della pagina. Qui non possiamo scalare col
         // numero di domande, perche' scoprirlo e' proprio il compito di questa
         // chiamata: si parte dal massimo che regge tutta la catena di fallback.
-        max_tokens: 8000,
-        temperature: 0,
+        // Vale anche qui il margine per il ragionamento: Sonnet 5 pensa per
+        // impostazione predefinita, e il pensiero attinge allo stesso tetto.
+        max_tokens: 16000,
         messages: [{
             role: 'user',
             content: [imageContent, { type: 'text', text: prompt }]
@@ -264,16 +265,22 @@ async function extractQuestions(apiKey, imageContent, prompt, modelKey = 'sonnet
  * uscita), quindi un valore piu' alto romperebbe la richiesta proprio quando
  * siamo gia' ripiegati sul modello di riserva.
  */
+// Il budget deve coprire il ragionamento, non solo la risposta. Su Opus 5 e
+// Sonnet 5 il pensiero e' attivo per impostazione predefinita: omettere
+// `thinking` non lo spegne piu' come faceva su Opus 4.8, che e' l'assunzione
+// con cui questo numero era stato scelto. Con 4000 token Opus li consumava
+// tutti ragionando e veniva troncato prima di scrivere una riga: il content
+// tornava col solo blocco "thinking", da cui empty_response, 500, e un
+// "Ritento" sul telefono - dopo aver gia' pagato estrazione e RAG.
 function maxTokensForQuestions(count) {
-    return Math.min(8000, Math.max(4000, 600 * (count || 1) + 1000));
+    return Math.min(24000, Math.max(16000, 600 * (count || 1) + 16000));
 }
 
 async function analyzeWithContext(apiKey, prompt, modelKey = 'sonnet', opts = {}) {
-    const maxTokens = opts.maxTokens || 4000;
+    const maxTokens = opts.maxTokens || 16000;
     const { response, model } = await callWithModelFallback(apiKey, modelKey, (m) => ({
         model: m,
         max_tokens: maxTokens,
-        temperature: 0,
         messages: [{
             role: 'user',
             content: [{ type: 'text', text: prompt }]
