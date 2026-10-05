@@ -916,3 +916,41 @@ input[type="file"] {
     line-height: 1.5;
     padding: 6px 4px 14px;
 }
+
+/* --------------------------------------------------------------------
+   Layout a portata di pollice, solo su telefono.
+
+   L'area di caricamento e' il bersaglio principale, e in cima allo schermo
+   di un iPhone moderno non si raggiunge con una mano sola. Qui il gruppo di
+   comando scende in fondo e i risultati restano sopra.
+
+   Fatto con flex + order invece che con position:fixed: una barra fissa si
+   sovrapporrebbe ai pannelli Storico e Stato, che occupano tutto lo schermo
+   e scorrono, e costringerebbe a compensare con padding fantasma.
+   -------------------------------------------------------------------- */
+@media (max-width: 600px) {
+    .container {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;   /* ripiego per browser senza dvh */
+        min-height: 100dvh;  /* tiene conto della barra di Safari che compare e scompare */
+        /* L'inset vale 0 finche' la pagina non entra nell'area non sicura:
+           innocuo adesso, corretto se un domani ci entrasse. */
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    }
+
+    #results { order: 1; }
+    #loading { order: 2; }
+    #spentCounter { order: 3; }
+
+    /* margin-top:auto raccoglie lo spazio libero e spinge in fondo
+       tutto il gruppo che segue. */
+    .main-content {
+        order: 4;
+        margin-top: auto;
+        padding: 10px 0 5px;
+    }
+
+    .precision-toggle { order: 5; }
+    .actions { order: 6; padding-bottom: 2px; }
+}
