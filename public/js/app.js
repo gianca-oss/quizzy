@@ -247,6 +247,98 @@ function formatHistoryDate(iso) {
 
 let historyEditMode = false;
 
+/**
+ * Pannello di stato: la verifica da fare prima di un esame, dentro l'app
+ * invece che da terminale.
+ *
+ * Interroga la rotta di stato con ?check=embeddings, che e' l'unico modo di
+ * sapere se la ricerca semantica funziona DAVVERO. Anthropic, se resta senza
+ * credito, risponde 402 e l'errore arriva in faccia; OpenAI no: se la chiamata
+ * agli embeddings fallisce la ricerca ripiega sulle parole chiave e l'app
+ * continua a rispondere, solo peggio. Questo pannello esiste per quel caso.
+ */
+async function showStatus() {
+    const topbar =
+        '<div class="history-topbar">' +
+        '<button class="history-topbar-btn back" onclick="backToUpload()" aria-label="Indietro">' +
+        '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>' +
+        '<span>Indietro</span></button>' +
+        '<div class="history-title">Stato</div>' +
+        '<span class="history-topbar-btn-placeholder"></span>' +
+        '</div>';
+
+    const render = (body) => {
+        resultsContent.innerHTML = '<div class="result-content status-view">' + topbar + body + '</div>';
+    };
+
+    const row = (state, label, detail) =>
+        `<div class="status-row ${state}"><span class="status-dot"></span>` +
+        `<div class="status-row-text"><div class="status-row-label">${label}</div>` +
+        `<div class="status-row-detail">${detail}</div></div></div>`;
+
+    // Il pannello compare subito: la sonda degli embeddings e' una chiamata di
+    // rete vera e puo' metterci qualche centinaio di millisecondi.
+    render(row('', 'Verifica in corso', 'Interrogo il server…'));
+    results.style.display = 'block';
+    document.querySelector('.main-content').style.display = 'none';
+    document.querySelector('.actions').style.display = 'none';
+    const pt = document.getElementById('precisionToggle');
+    if (pt) pt.style.display = 'none';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (!navigator.onLine) {
+        render(row('ko', 'Offline', 'Nessuna connessione: impossibile interrogare il server.'));
+        return;
+    }
+
+    let api, health = null;
+    try {
+        const [a, h] = await Promise.all([
+            fetch('/api/analyze?check=embeddings', { cache: 'no-store' }).then(r => r.json()),
+            fetch('/health', { cache: 'no-store' }).then(r => r.json()).catch(() => null)
+        ]);
+        api = a; health = h;
+    } catch (err) {
+        render(row('ko', 'Server non raggiungibile', err.message || 'Errore di rete'));
+        return;
+    }
+
+    let body = '';
+
+    const corpusOk = !!(api.dataLoaded && api.courseConfigured);
+    body += row(corpusOk ? 'ok' : 'ko', 'Materiale del corso',
+        corpusOk
+            ? `${api.course} · ${api.chunksAvailable} estratti caricati`
+            : 'Corpus non caricato: le risposte non avrebbero fonti.');
+
+    body += row(api.apiKeyConfigured ? 'ok' : 'ko', 'Chiave Claude',
+        api.apiKeyConfigured
+            ? 'Configurata · estrazione e analisi disponibili'
+            : 'Mancante: nessuna analisi è possibile.');
+
+    const emb = api.embeddings;
+    if (emb && emb.ok) {
+        body += row('ok', 'Ricerca semantica', `Attiva · risposta in ${emb.ms} ms`);
+    } else if (emb) {
+        body += row('ko', 'Ricerca semantica', api.embeddingsKeyConfigured
+            ? 'OpenAI non risponde: credito esaurito o chiave non valida. L’app risponderebbe comunque, ma cercando per parole chiave, e le risposte sarebbero peggiori.'
+            : 'Chiave OpenAI non configurata: la ricerca userebbe solo le parole chiave.');
+    } else {
+        body += row('', 'Ricerca semantica', 'Non verificata dal server (versione precedente).');
+    }
+
+    if (health) {
+        const ore = Math.floor((health.uptimeSeconds || 0) / 3600);
+        body += row('', 'Versione online',
+            `${health.version || 'n/d'} · commit ${health.commit || 'n/d'} · attiva da ${ore} h`);
+    }
+
+    body += '<div class="status-note">La ricerca semantica è l’unica che può guastarsi senza avvisare: se cade, l’app continua a funzionare usando le parole chiave e le risposte peggiorano in silenzio. È il motivo per cui questa schermata esiste.</div>';
+    body += '<div class="history-edit-toolbar"><button onclick="showStatus()">Ricontrolla</button></div>';
+
+    render(body);
+}
+
 function showHistory() {
     const history = loadHistory();
     let html = '<div class="result-content history-view">';
@@ -1222,6 +1314,8 @@ document.addEventListener('DOMContentLoaded', () => {
         else clearAll();
     });
     if (historyBtn) historyBtn.addEventListener('click', showHistory);
+    const statusBtn = document.getElementById('statusBtn');
+    if (statusBtn) statusBtn.addEventListener('click', showStatus);
     setupDragAndDrop(imgUploadArea, handleImagesDrop);
     updateHistoryButton();
 

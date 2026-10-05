@@ -10,6 +10,7 @@
     --border-primary: #3a3a3c;
     --border-secondary: #2a2a2a;
     --success-color: #34c759;
+    --error-color: #ff3b30;
     --success-hover: #2fb54d;
     --black-button: #f5f5f7;
     --black-button-hover: #ffffff;
@@ -871,4 +872,47 @@ input[type="file"] {
         flex: 1;
         max-width: 150px;
     }
+}
+
+/* Pannello di stato: una riga per servizio, con il pallino che dice come sta. */
+.status-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    margin-bottom: 10px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-top: 5px;
+    flex: 0 0 10px;
+    background: var(--text-secondary);
+}
+
+.status-row.ok .status-dot { background: var(--success-color); }
+.status-row.ko .status-dot { background: var(--error-color); }
+
+.status-row-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.status-row-detail {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    line-height: 1.45;
+}
+
+.status-note {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    padding: 6px 4px 14px;
 }
