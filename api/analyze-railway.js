@@ -1,5 +1,5 @@
 const { loadEnhancedData, loadEmbeddings, getCourseName } = require('./data-loader');
-const { hybridSearch } = require('./search');
+const { hybridSearch, getQueryEmbeddings } = require('./search');
 const { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions } = require('./claude-client');
 const { parseQuestionsWithStats } = require('./question-parser');
 const {
@@ -27,6 +27,18 @@ module.exports = async function handler(req, res) {
     if (req.method === 'GET') {
         const apiKey = process.env.ANTHROPIC_API_KEY_EVO;
         const data = await loadEnhancedData();
+
+        // Verifica attiva degli embeddings, ma solo su richiesta esplicita
+        // (?check=embeddings): questa stessa rotta e' il warm-up che il
+        // frontend chiama a ogni avvio, e non deve spendere una chiamata a
+        // OpenAI ogni volta che apri l'app.
+        let embeddings = null;
+        if (req.query?.check === 'embeddings') {
+            const t0 = Date.now();
+            const probe = await getQueryEmbeddings(['verifica']);
+            embeddings = { ok: !!probe, ms: Date.now() - t0 };
+        }
+
         return res.status(200).json({
             status: 'active',
             message: 'Quiz Assistant API - Railway Edition',
@@ -39,6 +51,12 @@ module.exports = async function handler(req, res) {
             chunksAvailable: data?.textChunks?.length || 0,
             // Which model each tier resolved to: a retired model id used to
             // surface as a generic "analysis failed".
+            // Senza embeddings la ricerca ripiega sulle parole chiave senza
+            // dire niente a nessuno: l'app risponde lo stesso, peggio. Qui la
+            // chiave si vede gratis; se risponde davvero lo dice `embeddings`,
+            // popolato solo con ?check=embeddings.
+            embeddingsKeyConfigured: !!process.env.OPENAI_API_KEY,
+            embeddings,
             models: getResolvedModels()
         });
     }
@@ -128,6 +146,13 @@ module.exports = async function handler(req, res) {
         totalCost = extraction.cost || 0;
         const resolvedAnswers = {};  // num → { letter, source, analysis }
 
+        // Come il contesto e' stato recuperato DAVVERO. Prima processingMethod
+        // lo deduceva dalla presenza del file degli embeddings, quindi diceva
+        // "semantic" anche quando la chiamata a OpenAI falliva e la ricerca
+        // ripiegava sulle parole chiave - cioe' proprio nel caso che conta,
+        // perche' peggiora le risposte senza sollevare un errore.
+        const searchMethods = { semantic: 0, keyword: 0 };
+
         // Run one RAG pass over a set of question indices with a given model.
         // Shares the single prompt builder (response-builder) so the format
         // stays in lockstep with the parser. With forceAnswer=true the model
@@ -138,6 +163,7 @@ module.exports = async function handler(req, res) {
             const nums = indices.map(idx => numberOf(idx));
 
             const searchResults = await hybridSearch(qs, data.textChunks, embeddingsData);
+            searchResults.forEach(r => { searchMethods[r.searchMethod === 'semantic' ? 'semantic' : 'keyword']++; });
             const ragItems = qs.map((q, i) => ({ num: nums[i], result: searchResults[i] }));
             const { context: ragContext, stats } = buildRagContextWithStats(ragItems);
             console.log(
@@ -344,7 +370,10 @@ module.exports = async function handler(req, res) {
                 model: unmatched.length > 0 ? usedModel : (needsHaiku.length > 0 ? 'haiku' : 'question-bank'),
                 processingMethod: unmatched.length === 0
                     ? (needsHaiku.length > 0 ? 'question-bank+haiku' : 'question-bank')
-                    : (embeddingsData ? 'semantic-search-railway' : 'keyword-search-railway'),
+                    : (searchMethods.semantic && searchMethods.keyword ? 'mixed-search-railway'
+                        : searchMethods.semantic ? 'semantic-search-railway'
+                        : 'keyword-search-railway'),
+                searchMethods,
                 searchStats: {
                     tier1_direct: direct.length,
                     tier2_haiku: bankResolved - direct.length,
