@@ -1,5 +1,5 @@
 const { loadEnhancedData, loadEmbeddings, getCourseName } = require('./data-loader');
-const { hybridSearch, getQueryEmbeddings } = require('./search');
+const { hybridSearch, probeEmbeddings } = require('./search');
 const { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions } = require('./claude-client');
 const { parseQuestionsWithStats } = require('./question-parser');
 const {
@@ -34,9 +34,7 @@ module.exports = async function handler(req, res) {
         // OpenAI ogni volta che apri l'app.
         let embeddings = null;
         if (req.query?.check === 'embeddings') {
-            const t0 = Date.now();
-            const probe = await getQueryEmbeddings(['verifica']);
-            embeddings = { ok: !!probe, ms: Date.now() - t0 };
+            embeddings = await probeEmbeddings();
         }
 
         return res.status(200).json({

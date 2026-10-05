@@ -58,6 +58,60 @@ async function getQueryEmbeddings(texts) {
     }
 }
 
+
+/**
+ * Traduce la risposta di OpenAI in un motivo leggibile. 401 e 429 sono due
+ * problemi diversi con due rimedi diversi - rifare la chiave contro ricaricare
+ * il saldo - e confonderli manda a cercare nel posto sbagliato.
+ */
+function embeddingFailureReason(status, code, message) {
+    if (code === 'insufficient_quota') return 'Credito OpenAI esaurito: ricarica il saldo';
+    if (status === 401) return 'Chiave OpenAI non valida o revocata';
+    if (status === 429) return 'Limite di frequenza raggiunto: troppe richieste ravvicinate';
+    if (status === 403) return 'Accesso negato: permessi della chiave o regione non consentita';
+    if (status === 404) return `Modello ${EMBEDDING_MODEL} non disponibile per questa chiave`;
+    if (status >= 500) return 'Disservizio di OpenAI: riprova fra poco';
+    return message || `OpenAI ha risposto ${status}`;
+}
+
+/**
+ * Verifica diagnostica degli embeddings, per il pannello Stato.
+ *
+ * Volutamente separata da getQueryEmbeddings: nel percorso caldo serve solo
+ * sapere si'/no e ripiegare in fretta, e infatti li' ogni errore diventa null.
+ * Qui invece interessa il PERCHE', perche' il pannello deve dare una diagnosi
+ * e non un sintomo: "non risponde" non dice se ricaricare il saldo o rifare
+ * la chiave.
+ */
+async function probeEmbeddings() {
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!openaiKey) return { ok: false, ms: 0, reason: 'Chiave OPENAI_API_KEY non configurata' };
+
+    const t0 = Date.now();
+    try {
+        const response = await fetch('https://api.openai.com/v1/embeddings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiKey}`
+            },
+            body: JSON.stringify({ model: EMBEDDING_MODEL, input: ['verifica'], dimensions: EMBEDDING_DIMS })
+        });
+        const ms = Date.now() - t0;
+        if (response.ok) return { ok: true, ms, status: response.status };
+
+        let code = '', message = '';
+        try {
+            const body = await response.json();
+            code = body?.error?.code || '';
+            message = body?.error?.message || '';
+        } catch {}
+        return { ok: false, ms, status: response.status, reason: embeddingFailureReason(response.status, code, message) };
+    } catch (err) {
+        return { ok: false, ms: Date.now() - t0, reason: `Rete non raggiungibile: ${err.message}` };
+    }
+}
+
 /**
  * Testo da cui si ricava l'embedding della query.
  *
@@ -215,6 +269,7 @@ async function hybridSearch(questions, chunks, embeddingsData) {
 
 module.exports = {
     hybridSearch,
+    probeEmbeddings,
     keywordSearch,
     semanticSearch,
     getQueryEmbeddings,

@@ -320,9 +320,12 @@ async function showStatus() {
     if (emb && emb.ok) {
         body += row('ok', 'Ricerca semantica', `Attiva · risposta in ${emb.ms} ms`);
     } else if (emb) {
-        body += row('ko', 'Ricerca semantica', api.embeddingsKeyConfigured
-            ? 'OpenAI non risponde: credito esaurito o chiave non valida. L’app risponderebbe comunque, ma cercando per parole chiave, e le risposte sarebbero peggiori.'
-            : 'Chiave OpenAI non configurata: la ricerca userebbe solo le parole chiave.');
+        // Il server manda gia' il motivo tradotto; lo stato HTTP resta in coda
+        // per chi deve aprire un ticket o guardare la dashboard.
+        const motivo = emb.reason || 'OpenAI non risponde';
+        const stato = emb.status ? ` (HTTP ${emb.status})` : '';
+        body += row('ko', 'Ricerca semantica',
+            `${motivo}${stato}. L’app risponde comunque, ma cercando per parole chiave: le risposte peggiorano.`);
     } else {
         body += row('', 'Ricerca semantica', 'Non verificata dal server (versione precedente).');
     }
