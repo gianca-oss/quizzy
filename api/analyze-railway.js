@@ -1,6 +1,6 @@
 const { loadEnhancedData, loadEmbeddings, getCourseName } = require('./data-loader');
-const { hybridSearch, probeEmbeddings } = require('./search');
-const { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions } = require('./claude-client');
+const { hybridSearch, probeEmbeddings, probeOpenAiCredit } = require('./search');
+const { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions, probeClaude } = require('./claude-client');
 const { parseQuestionsWithStats } = require('./question-parser');
 const {
     lookupQuestions,
@@ -32,9 +32,17 @@ module.exports = async function handler(req, res) {
         // (?check=embeddings): questa stessa rotta e' il warm-up che il
         // frontend chiama a ogni avvio, e non deve spendere una chiamata a
         // OpenAI ogni volta che apri l'app.
-        let embeddings = null;
-        if (req.query?.check === 'embeddings') {
-            embeddings = await probeEmbeddings();
+        // Qualunque valore di ?check esegue TUTTE le sonde, in parallelo: una
+        // chiamata minima per servizio, per sapere se rispondono davvero e non
+        // solo se la chiave e' impostata. Restano fuori dal warm-up, che questa
+        // stessa rotta serve a ogni avvio dell'app.
+        let embeddings = null, claude = null, openaiCredit = null;
+        if (req.query?.check) {
+            [embeddings, claude, openaiCredit] = await Promise.all([
+                probeEmbeddings(),
+                probeClaude(apiKey),
+                probeOpenAiCredit()
+            ]);
         }
 
         return res.status(200).json({
@@ -55,6 +63,8 @@ module.exports = async function handler(req, res) {
             // popolato solo con ?check=embeddings.
             embeddingsKeyConfigured: !!process.env.OPENAI_API_KEY,
             embeddings,
+            claude,
+            openaiCredit,
             models: getResolvedModels()
         });
     }

@@ -265,6 +265,63 @@ async function extractQuestions(apiKey, imageContent, prompt, modelKey = 'sonnet
  * uscita), quindi un valore piu' alto romperebbe la richiesta proprio quando
  * siamo gia' ripiegati sul modello di riserva.
  */
+
+/**
+ * Traduce un errore di Anthropic in un motivo leggibile, con la stessa logica
+ * della sonda OpenAI: credito finito e chiave revocata sono due guasti con due
+ * rimedi diversi.
+ */
+function claudeFailureReason(status, message) {
+    const lower = (message || '').toLowerCase();
+    if (lower.includes('credit balance') || lower.includes('insufficient')) {
+        return 'Credito Anthropic esaurito: ricarica il saldo';
+    }
+    if (status === 401 || lower.includes('authentication') || lower.includes('invalid_api_key')) {
+        return 'Chiave Anthropic non valida o revocata';
+    }
+    if (status === 429) return 'Limite di frequenza raggiunto: troppe richieste ravvicinate';
+    if (status >= 500) return 'Disservizio di Anthropic: riprova fra poco';
+    return message || `Anthropic ha risposto ${status}`;
+}
+
+/**
+ * Sonda di liveness per Anthropic, per il pannello Stato.
+ *
+ * Sapere che la chiave e' "configurata" non dice niente: una chiave valida su
+ * un account senza credito e' indistinguibile da una buona finche' non la usi,
+ * e lo scopriresti alla prima foto davanti al foglio d'esame. Qui si fa la
+ * chiamata piu' piccola possibile - Haiku, un solo token di risposta - cosi'
+ * il guasto si vede prima e non durante.
+ */
+async function probeClaude(apiKey) {
+    if (!apiKey) return { ok: false, ms: 0, reason: 'Chiave ANTHROPIC_API_KEY_EVO non configurata' };
+
+    const model = resolvedModel.haiku || MODEL_CHAINS.haiku[0];
+    const t0 = Date.now();
+    try {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: buildHeaders(apiKey),
+            body: JSON.stringify({
+                model,
+                max_tokens: 1,
+                messages: [{ role: 'user', content: 'ok' }]
+            })
+        });
+        const ms = Date.now() - t0;
+        if (response.ok) return { ok: true, ms, status: response.status, model };
+
+        let message = '';
+        try {
+            const body = await response.json();
+            message = body?.error?.message || '';
+        } catch {}
+        return { ok: false, ms, status: response.status, reason: claudeFailureReason(response.status, message) };
+    } catch (err) {
+        return { ok: false, ms: Date.now() - t0, reason: `Rete non raggiungibile: ${err.message}` };
+    }
+}
+
 // Il budget deve coprire il ragionamento, non solo la risposta. Su Opus 5 e
 // Sonnet 5 il pensiero e' attivo per impostazione predefinita: omettere
 // `thinking` non lo spegne piu' come faceva su Opus 4.8, che e' l'assunzione
@@ -309,4 +366,4 @@ async function analyzeWithContext(apiKey, prompt, modelKey = 'sonnet', opts = {}
     return { text: textFromResponse(data), model, cost: computeCost(model, data.usage) };
 }
 
-module.exports = { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions, MODEL_CHAINS };
+module.exports = { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions, probeClaude, MODEL_CHAINS };

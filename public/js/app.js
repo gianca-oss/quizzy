@@ -311,10 +311,21 @@ async function showStatus() {
             ? `${api.course} · ${api.chunksAvailable} estratti caricati`
             : 'Corpus non caricato: le risposte non avrebbero fonti.');
 
-    body += row(api.apiKeyConfigured ? 'ok' : 'ko', 'Chiave Claude',
-        api.apiKeyConfigured
-            ? 'Configurata · estrazione e analisi disponibili'
-            : 'Mancante: nessuna analisi è possibile.');
+    // Claude: non basta sapere che la chiave c'e'. Una chiave valida su un
+    // account senza credito sembra buona finche' non la usi.
+    const cl = api.claude;
+    if (cl && cl.ok) {
+        body += row('ok', 'Chiave Claude', `Risponde · ${cl.ms} ms`);
+    } else if (cl) {
+        const motivo = cl.reason || 'Anthropic non risponde';
+        const stato = cl.status ? ` (HTTP ${cl.status})` : '';
+        body += row('ko', 'Chiave Claude', `${motivo}${stato}. Nessuna analisi è possibile.`);
+    } else {
+        body += row(api.apiKeyConfigured ? 'ok' : 'ko', 'Chiave Claude',
+            api.apiKeyConfigured
+                ? 'Configurata, ma non verificata dal server (versione precedente)'
+                : 'Mancante: nessuna analisi è possibile.');
+    }
 
     const emb = api.embeddings;
     if (emb && emb.ok) {
@@ -328,6 +339,14 @@ async function showStatus() {
             `${motivo}${stato}. L’app risponde comunque, ma cercando per parole chiave: le risposte peggiorano.`);
     } else {
         body += row('', 'Ricerca semantica', 'Non verificata dal server (versione precedente).');
+    }
+
+    // Il saldo compare solo se OpenAI lo concede: l'endpoint non e'
+    // documentato e con una chiave API normale di solito rifiuta.
+    const cred = api.openaiCredit;
+    if (cred && cred.available && typeof cred.totalAvailable === 'number') {
+        body += row(cred.totalAvailable > 1 ? 'ok' : 'ko', 'Credito OpenAI',
+            `$${cred.totalAvailable.toFixed(2)} residui`);
     }
 
     if (health) {
