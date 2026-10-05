@@ -113,35 +113,13 @@ async function probeEmbeddings() {
 }
 
 
-/**
- * Tentativo di leggere il credito residuo OpenAI.
- *
- * `dashboard/billing/credit_grants` non e' documentato e nasce per la
- * dashboard del sito, non per le chiavi API: con una chiave normale di solito
- * risponde 401. Lo proviamo lo stesso perche' saperlo costa una richiesta e
- * l'alternativa e' continuare a chiederselo. Se non e' accessibile il pannello
- * tace invece di mostrare un campo vuoto.
- */
-async function probeOpenAiCredit() {
-    const openaiKey = process.env.OPENAI_API_KEY;
-    if (!openaiKey) return null;
-
-    try {
-        const response = await fetch('https://api.openai.com/v1/dashboard/billing/credit_grants', {
-            headers: { 'Authorization': `Bearer ${openaiKey}` }
-        });
-        if (!response.ok) return { available: false, status: response.status };
-        const body = await response.json();
-        return {
-            available: typeof body?.total_available === 'number',
-            totalAvailable: body?.total_available,
-            totalGranted: body?.total_granted,
-            totalUsed: body?.total_used
-        };
-    } catch (err) {
-        return { available: false, reason: err.message };
-    }
-}
+// Il credito residuo non e' leggibile da qui, ed e' una strada gia' percorsa:
+// `credit_grants` e' un endpoint della dashboard di OpenAI e alla chiave API di
+// questo progetto risponde 403 (provato il 5 ottobre 2026). Anthropic non lo
+// espone affatto senza una chiave di amministrazione dell'organizzazione, che
+// su un server web non vale il rischio. Il presidio resta probeEmbeddings qui
+// sopra - che dice se il servizio risponde ADESSO, l'unica cosa che conti
+// davvero prima di un esame - piu' gli avvisi di soglia sugli account.
 
 /**
  * Testo da cui si ricava l'embedding della query.
@@ -301,7 +279,6 @@ async function hybridSearch(questions, chunks, embeddingsData) {
 module.exports = {
     hybridSearch,
     probeEmbeddings,
-    probeOpenAiCredit,
     keywordSearch,
     semanticSearch,
     getQueryEmbeddings,

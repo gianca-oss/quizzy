@@ -1,5 +1,5 @@
 const { loadEnhancedData, loadEmbeddings, getCourseName } = require('./data-loader');
-const { hybridSearch, probeEmbeddings, probeOpenAiCredit } = require('./search');
+const { hybridSearch, probeEmbeddings } = require('./search');
 const { extractQuestions, analyzeWithContext, getResolvedModels, maxTokensForQuestions, probeClaude } = require('./claude-client');
 const { parseQuestionsWithStats } = require('./question-parser');
 const {
@@ -36,12 +36,11 @@ module.exports = async function handler(req, res) {
         // chiamata minima per servizio, per sapere se rispondono davvero e non
         // solo se la chiave e' impostata. Restano fuori dal warm-up, che questa
         // stessa rotta serve a ogni avvio dell'app.
-        let embeddings = null, claude = null, openaiCredit = null;
+        let embeddings = null, claude = null;
         if (req.query?.check) {
-            [embeddings, claude, openaiCredit] = await Promise.all([
+            [embeddings, claude] = await Promise.all([
                 probeEmbeddings(),
-                probeClaude(apiKey),
-                probeOpenAiCredit()
+                probeClaude(apiKey)
             ]);
         }
 
@@ -64,7 +63,6 @@ module.exports = async function handler(req, res) {
             embeddingsKeyConfigured: !!process.env.OPENAI_API_KEY,
             embeddings,
             claude,
-            openaiCredit,
             models: getResolvedModels()
         });
     }

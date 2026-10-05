@@ -341,14 +341,6 @@ async function showStatus() {
         body += row('', 'Ricerca semantica', 'Non verificata dal server (versione precedente).');
     }
 
-    // Il saldo compare solo se OpenAI lo concede: l'endpoint non e'
-    // documentato e con una chiave API normale di solito rifiuta.
-    const cred = api.openaiCredit;
-    if (cred && cred.available && typeof cred.totalAvailable === 'number') {
-        body += row(cred.totalAvailable > 1 ? 'ok' : 'ko', 'Credito OpenAI',
-            `$${cred.totalAvailable.toFixed(2)} residui`);
-    }
-
     if (health) {
         const ore = Math.floor((health.uptimeSeconds || 0) / 3600);
         body += row('', 'Versione online',
