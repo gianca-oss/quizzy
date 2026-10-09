@@ -120,8 +120,24 @@ module.exports = async function handler(req, res) {
         const parsed = parseQuestionsWithStats(responseText);
         const questions = parsed.questions;
         if (questions.length === 0) {
+            // Due cause molto diverse, e confonderle manda l'utente a sbattere.
+            // Una domanda aperta viene scartata DI PROPOSITO dal parser, che
+            // pretende almeno due opzioni: rispondere "rifai la foto piu'
+            // nitida" e' falso due volte, perche' l'OCR aveva letto benissimo
+            // e la domanda c'era. Nessuna foto migliore risolverebbe.
+            const scartate = parsed.dropped || 0;
+            if (scartate > 0) {
+                const quante = scartate === 1
+                    ? 'Ho letto una domanda ma l’ho scartata'
+                    : `Ho letto ${scartate} domande ma le ho scartate`;
+                return res.status(400).json({
+                    kind: 'no_multiple_choice',
+                    error: `${quante} perché priva di opzioni di risposta. Quest’app risponde solo a domande a scelta multipla, con almeno due opzioni.`
+                });
+            }
             return res.status(400).json({
-                error: 'Nessuna domanda estratta dall\'immagine. Assicurati che l\'immagine sia chiara e contenga domande.'
+                kind: 'no_questions',
+                error: 'Nessuna domanda estratta dall’immagine. Assicurati che l’immagine sia chiara e contenga domande.'
             });
         }
         if (parsed.dropped || parsed.illegible || parsed.truncated) {

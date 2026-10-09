@@ -27,12 +27,20 @@ function parseQuestionsWithStats(responseText) {
     }
     let result = parseJSONWithStats(responseText);
 
+    // I ripieghi non sanno contare gli scarti, quindi subentrano solo se
+    // trovano davvero qualcosa. Sostituendo il risultato a scatola chiusa si
+    // perdeva il conteggio del passaggio JSON proprio nel caso in cui serve:
+    // una sola domanda aperta, scartata perche' priva di opzioni, elenco
+    // vuoto - e il chiamante non poteva piu' distinguere "scartata" da
+    // "immagine illeggibile", che per l'utente sono due rimedi diversi.
     if (result.questions.length === 0) {
-        result = { questions: parseWithSeparators(responseText), dropped: 0, illegible: 0 };
+        const bySeparators = parseWithSeparators(responseText);
+        if (bySeparators.length > 0) result = { questions: bySeparators, dropped: 0, illegible: 0 };
     }
 
     if (result.questions.length === 0) {
-        result = { questions: parseAlternative(responseText), dropped: 0, illegible: 0 };
+        const alternative = parseAlternative(responseText);
+        if (alternative.length > 0) result = { questions: alternative, dropped: 0, illegible: 0 };
     }
 
     let truncated = 0;

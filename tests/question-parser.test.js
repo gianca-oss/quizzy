@@ -44,6 +44,17 @@ test('reports questions dropped because their options were unreadable', () => {
     assert.strictEqual(dropped, 1, 'the unreadable question must be counted, not silently lost');
 });
 
+test('drops an open question - one with no options at all - and counts it', () => {
+    // Il caso riscontrato sul campo: una foto con una sola domanda aperta.
+    // Va scartata, ma DEVE finire nel conteggio: e' quel numero che permette
+    // al handler di dire "priva di opzioni" invece di "rifai la foto".
+    const { questions, dropped } = parseQuestionsWithStats(wrap([
+        { text: 'Descriva il candidato il concetto di valore condiviso.' }
+    ]));
+    assert.strictEqual(questions.length, 0);
+    assert.strictEqual(dropped, 1, 'an open question must be counted as dropped, not vanish');
+});
+
 test('flags a question that survived with only some options unreadable', () => {
     const { questions, illegible } = parseQuestionsWithStats(wrap([
         { text: 'Parziale', options: { A: 'a', B: 'b', C: '[illeggibile]' } }
