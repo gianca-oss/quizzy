@@ -1011,6 +1011,7 @@ async function analyze() {
     const precision = document.getElementById('precisionInput')?.checked === true;
 
     let permanentErrorKind = null;
+    let permanentErrorMessage = null;
     // A permanent failure (no credit, dead model) makes the remaining images
     // pointless: abort them instead of firing more doomed calls.
     let circuitBroken = false;
@@ -1087,12 +1088,18 @@ async function analyze() {
             else if (err.kind === 'auth') label = 'API Key non valida';
             else if (err.kind === 'rate_limit') label = 'Rate limit superato';
             else if (err.kind === 'model_unavailable') label = 'Modello non disponibile';
+            else if (err.kind === 'no_multiple_choice') label = 'Domanda senza opzioni';
+            else if (err.kind === 'no_questions') label = 'Nessuna domanda letta';
             else if (err.name === 'AbortError') label = 'Timeout server';
             else label = (err.message || 'Errore sconosciuto').substring(0, 60);
             setImageState(i, label, 100, 'error');
             failedIndexes.push(i);
             if (isPermanent) {
                 permanentErrorKind = err.kind;
+                // Il server spiega gia' cosa e' successo: buttare via quel
+                // testo per poi indovinare e' il motivo per cui l'utente si
+                // e' visto suggerire un cold-start su una domanda aperta.
+                permanentErrorMessage = err.message || null;
                 // Stop the images already in flight: they would fail the same
                 // way, and on a credit problem every extra call is waste.
                 circuitBroken = true;
@@ -1169,6 +1176,21 @@ async function analyze() {
             title = 'Limite di velocità superato';
             body = "Troppe richieste in poco tempo verso Anthropic.";
             note = 'Aspetta qualche minuto e riprova.';
+        } else if (permanentErrorKind === 'no_multiple_choice') {
+            title = 'Domanda senza opzioni';
+            body = permanentErrorMessage || 'La foto non contiene domande a scelta multipla.';
+            note = 'Quest’app risolve quiz a risposta chiusa. Una domanda aperta non può essere analizzata, e rifare la foto non cambierebbe nulla.';
+        } else if (permanentErrorKind === 'no_questions') {
+            title = 'Nessuna domanda riconosciuta';
+            body = permanentErrorMessage || 'Non sono riuscito a leggere domande nell’immagine.';
+            note = 'Qui sì che una foto migliore aiuta: inquadra il foglio per intero, con buona luce.';
+        } else if (permanentErrorMessage) {
+            // Il server ha detto qualcosa di preciso: mostrarlo e' sempre
+            // meglio che tirare a indovinare. Il cold-start resta solo per
+            // quando la richiesta non e' mai arrivata a destinazione.
+            title = 'Analisi non riuscita';
+            body = permanentErrorMessage;
+            note = '';
         } else {
             title = 'Nessuna immagine analizzata';
             body = totalImages === 1 ? "L'analisi è fallita." : `Tutte le ${totalImages} analisi sono fallite.`;
@@ -1180,7 +1202,7 @@ async function analyze() {
                 <div class="error-title">${title}</div>
                 <div class="error-content">
                     <strong>${body}</strong>
-                    <div class="error-note">${note}</div>
+                    ${note ? `<div class="error-note">${note}</div>` : ''}
                     <div style="text-align: center; margin-top: 16px;">
                         <button onclick="backToUpload()" class="back-button">← Indietro</button>
                     </div>
